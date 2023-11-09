@@ -1,58 +1,154 @@
+<script setup>
+import { ref, onMounted } from 'vue';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, getDoc } from "firebase/firestore";
+import database from './firebase.js';
+
+const db = database;
+const data = ref([]);
+
+const FormData = ref({
+  task: null,
+  status: null,
+  created_at: null,
+});
+
+// Get the Task Data from the Firestore Database
+const renderDataTask = async () => {
+  const queryData = query(collection(db, "todos"), orderBy('created_at', 'desc'));
+
+  onSnapshot(queryData, (querySnapshot) => {
+    const task = [];
+    querySnapshot.forEach((item) => {
+      const todo = {
+        id: item.id,
+        task: item.data().task,
+        status: item.data().status
+      }
+      task.push(todo);
+    });
+    data.value = task;
+  });
+};
+
+// Add New Task
+const createTask = async (e) => {
+  e.preventDefault();
+  FormData.value.status = false;
+
+  const response = await addDoc(collection(db, "todos"), {
+    task: FormData.value.task,
+    status: FormData.value.status,
+    created_at: serverTimestamp()
+  });
+
+  if (response.id) {
+    FormData.value.task = null;
+    FormData.value.status = null;
+    FormData.value.created_at = null;
+
+    alert('Added new task!');
+  }
+};
+
+// Update Task
+const updateTask = async (id) => {
+  const dataQuery = doc(db, 'todos', id);
+
+  const snapshot = await getDoc(dataQuery);
+
+  if (snapshot.exists()) {
+    // If the document exists, check the current status
+    const currentStatus = snapshot.data().status;
+
+    // Toggle the status
+    const newStatus = !currentStatus;
+
+    // Update the status in Firestore
+    const newData = {
+      status: newStatus
+    };
+
+    await updateDoc(dataQuery, newData);
+    console.log("Task status updated successfully.");
+
+  } else {
+    console.log("Task not found.");
+  }
+};
+
+
+// Delete Task
+const deleteTask = async (id) => {
+  const querryData = doc(db, 'todos', id);
+  deleteDoc(querryData)
+    .then(() => {
+      alert('Task successfully deleted.');
+    })
+    .catch((error) => {
+      alert('Error deleting document:', error);
+    });
+};
+
+onMounted(() => {
+  renderDataTask();
+});
+</script>
+
 <template>
-  <div class="hello">
-    <h1>{{ msg }}</h1>
-    <p>
-      For a guide and recipes on how to configure / customize this project,<br>
-      check out the
-      <a href="https://cli.vuejs.org" target="_blank" rel="noopener">vue-cli documentation</a>.
-    </p>
-    <h3>Installed CLI Plugins</h3>
-    <ul>
-      <li><a href="https://github.com/vuejs/vue-cli/tree/dev/packages/%40vue/cli-plugin-babel" target="_blank" rel="noopener">babel</a></li>
-      <li><a href="https://github.com/vuejs/vue-cli/tree/dev/packages/%40vue/cli-plugin-eslint" target="_blank" rel="noopener">eslint</a></li>
-    </ul>
-    <h3>Essential Links</h3>
-    <ul>
-      <li><a href="https://vuejs.org" target="_blank" rel="noopener">Core Docs</a></li>
-      <li><a href="https://forum.vuejs.org" target="_blank" rel="noopener">Forum</a></li>
-      <li><a href="https://chat.vuejs.org" target="_blank" rel="noopener">Community Chat</a></li>
-      <li><a href="https://twitter.com/vuejs" target="_blank" rel="noopener">Twitter</a></li>
-      <li><a href="https://news.vuejs.org" target="_blank" rel="noopener">News</a></li>
-    </ul>
-    <h3>Ecosystem</h3>
-    <ul>
-      <li><a href="https://router.vuejs.org" target="_blank" rel="noopener">vue-router</a></li>
-      <li><a href="https://vuex.vuejs.org" target="_blank" rel="noopener">vuex</a></li>
-      <li><a href="https://github.com/vuejs/vue-devtools#vue-devtools" target="_blank" rel="noopener">vue-devtools</a></li>
-      <li><a href="https://vue-loader.vuejs.org" target="_blank" rel="noopener">vue-loader</a></li>
-      <li><a href="https://github.com/vuejs/awesome-vue" target="_blank" rel="noopener">awesome-vue</a></li>
-    </ul>
+  <div class="wrapper">
+    <h1 class="wrapper-title">
+      Todo App
+    </h1>
+
+    <div class="form">
+      <form @submit="createTask">
+        <input type="text" class="input" v-model="FormData.task" placeholder="Add Task" required>
+        <button type="submit">Add</button>
+      </form>
+    </div>
+
+    <!-- List the Data -->
+    <div v-if="data.length > 0" class="task-wrapper">
+      <div v-for="item in data" :key="item.id" class="task-items">
+        <div :class="item.status ? 'completed' : ''">• {{ item.task }}</div>
+        <div class="task-action">
+          <button @click="updateTask(item.id)">{{ item.status ? 'Clear' : 'Complete' }}</button>
+          <button @click="deleteTask(item.id)">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- If Not Found -->
+    <div v-else class="task-wrapper">
+      No Data Found
+    </div>
   </div>
 </template>
 
-<script>
-export default {
-  name: 'HelloWorld',
-  props: {
-    msg: String
-  }
-}
-</script>
-
-<!-- Add "scoped" attribute to limit CSS to this component only -->
 <style scoped>
-h3 {
-  margin: 40px 0 0;
+.wrapper {
+  font-family: sans-serif;
+  width: 350px;
+  margin: 0 auto;
 }
-ul {
-  list-style-type: none;
-  padding: 0;
+
+.task-wrapper {
+  margin-top: 20px;
 }
-li {
-  display: inline-block;
-  margin: 0 10px;
+
+.task-wrapper .task-items {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  margin-bottom: 14px;
 }
-a {
-  color: #42b983;
+
+.completed {
+  text-decoration: line-through;
+}
+
+.task-wrapper .task-action {
+  display: flex;
+  gap: 8px;
 }
 </style>
